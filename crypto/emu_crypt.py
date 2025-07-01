@@ -31,6 +31,7 @@ class EmuCrypt:
     _secret = None
     _output_stream = None
     _data_buffer = None
+    _decrypt_tail = None
     _first_write = None
     _workload = None
     _closed = None
@@ -43,8 +44,8 @@ class EmuCrypt:
         self._secret = EmuCrypt.gen_hash(self._salt, self._secret, self._workload, aes.KEY_SIZE)
 
     def setup_for_decrypt(self):
-        # All the required data should be on the input stream
-        return
+        if isinstance(self._secret, str):
+            self._secret = self._secret.encode('utf-8')
 
     def __init__(self, stream_mode, secret, output_stream, crypt_mode=CRYPT_MODE_ONE):
         self._secret = secret
@@ -76,22 +77,68 @@ class EmuCrypt:
                 write_bytes.extend(self._salt)
                 self._output_stream.write(write_bytes)
                 self._block_iv = self._iv
-        self._data_buffer.extend(bytes_to_write)
-        next_write_max_size = len(self._data_buffer)
-        if next_write_max_size < 16:
-            return # we cannot do anything with less than 16 bytes
-        next_write_remainder = (next_write_max_size % 16)
-        next_write_len = next_write_max_size - next_write_remainder
-        write_bytes = bytearray(b'')
-        write_bytes.extend(self._data_buffer[0:next_write_len]) # do we need this copy?
-        self._data_buffer = self._data_buffer[next_write_len:next_write_max_size] # shift the remaining data
-        ciphertext = aes.AES(self._secret).encrypt_cbc(write_bytes, self._block_iv)
-        # the last block is padding, drop it. The 2nd last block is the next IV
-        self._output_stream.write(ciphertext[0:len(ciphertext)-aes.BLOCK_SIZE])
-        self._block_iv = ciphertext[len(ciphertext)-(aes.BLOCK_SIZE * 2):len(ciphertext)-aes.BLOCK_SIZE]
+            self._data_buffer.extend(bytes_to_write)
+            next_write_max_size = len(self._data_buffer)
+            if next_write_max_size < 16:
+                return # we cannot do anything with less than 16 bytes
+            next_write_remainder = (next_write_max_size % 16)
+            next_write_len = next_write_max_size - next_write_remainder
+            write_bytes = bytearray(b'')
+            write_bytes.extend(self._data_buffer[0:next_write_len]) # do we need this copy?
+            self._data_buffer = self._data_buffer[next_write_len:next_write_max_size] # shift the remaining data
+            ciphertext = aes.AES(self._secret).encrypt_cbc(write_bytes, self._block_iv)
+            # the last block is padding, drop it. The 2nd last block is the next IV
+            self._output_stream.write(ciphertext[0:len(ciphertext)-aes.BLOCK_SIZE])
+            self._block_iv = ciphertext[len(ciphertext)-(aes.BLOCK_SIZE * 2):len(ciphertext)-aes.BLOCK_SIZE]
+        else:
+            self._data_buffer.extend(bytes_to_write)
+            if self._first_write:
+                if len(self._data_buffer) < 6:
+                    return # we need at least 6 bytes to work out the mode
+                header = self._data_buffer[0:CRYPT_HEADER_LEN]
+                pos = CRYPT_HEADER_LEN
+                if header != CRYPT_HEADER:
+                    raise ValueError("Data does not have expected header")
+                mode = self._data_buffer[pos:pos + CRYPT_MODE_LEN]
+                pos += CRYPT_MODE_LEN
+                if mode != tools.int_to_bytes(CRYPT_MODE_ONE, CRYPT_MODE_LEN):
+                    raise ValueError("Block decrypt only supports MODE_ONE not " + str(tools.bytes_to_int(mode)))
+                min_start_bytes = 0
+                if mode == tools.int_to_bytes(CRYPT_MODE_ONE, CRYPT_MODE_LEN):
+                    self._workload = CRYPT_MODE_ONE_WORKLOAD
+                    # min bytes to start mode one
+                    min_start_bytes = pos + aes.KEY_SIZE + aes.IV_SIZE
+                # We can't start until we have the full header
+                if len(self._data_buffer) <  min_start_bytes:
+                    return
+                # Pull the MODE ONE data out
+                self._iv = self._data_buffer[pos:pos + aes.IV_SIZE]
+                self._block_iv = self._iv
+                pos += aes.IV_SIZE
+                self._salt = self._data_buffer[pos:pos + aes.KEY_SIZE]
+                pos += aes.KEY_SIZE
+                self._data_buffer = self._data_buffer[pos:]
+                self._decrypt_tail = bytearray(b'')
+                self._secret = EmuCrypt.gen_hash(self._salt, self._secret, self._workload, aes.KEY_SIZE)
+                self._first_write = False
 
+            next_write_max_size = len(self._data_buffer)
+            if next_write_max_size < 32:
+                return # we cannot do anything with less than 32 bytes due to padding
+            next_write_remainder = (next_write_max_size % 16)
+            next_write_len = next_write_max_size - next_write_remainder
+            write_bytes = bytearray(b'')
+            write_bytes.extend(self._data_buffer[0:next_write_len]) # do we need this copy?
+            next_block_iv = write_bytes[next_write_len-aes.BLOCK_SIZE:next_write_len]
+            self._data_buffer = self._data_buffer[next_write_len:next_write_max_size] # shift the remaining data
+            plaintext = aes.AES(self._secret).decrypt_cbc(write_bytes, self._block_iv, padded_data=False)
+            # the last block is padding, drop it. The 2nd last block is the next IV
+            self._output_stream.write(self._decrypt_tail)
+            self._output_stream.write(plaintext[0:len(plaintext)-(aes.BLOCK_SIZE+aes.IV_SIZE)])
+            self._block_iv = next_block_iv
+            self._decrypt_tail = plaintext[len(plaintext)-(aes.BLOCK_SIZE+aes.IV_SIZE):]
 
-    # Flush the stream - only for encrypt
+    # Flush the stream
     def flush(self):
         if self._closed:
             raise ValueError('This stream is already closed.')
@@ -99,11 +146,17 @@ class EmuCrypt:
             # Just add padding
             ciphertext = aes.AES(self._secret).encrypt_cbc(self._data_buffer, self._block_iv)
             self._output_stream.write(ciphertext)
+        else:
+            if len(self._decrypt_tail) != aes.BLOCK_SIZE*2:
+                raise ValueError('Flush failed. Incorrect padding.')
+            self._output_stream.write(aes.unpad(self._decrypt_tail))
+        self._decrypt_tail = b''
         self._secret = b''
         self._iv = b''
         self._salt = b''
         self._data_buffer = b''
         self._closed = True
+        self._output_stream.flush()
 
     @staticmethod
     def gen_hash(salt, secret, rounds, size):

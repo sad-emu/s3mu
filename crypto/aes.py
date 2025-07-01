@@ -293,7 +293,7 @@ class AES:
 
         return b''.join(blocks)
 
-    def decrypt_cbc(self, ciphertext, iv):
+    def decrypt_cbc(self, ciphertext, iv, padded_data=True):
         """
         Decrypts `ciphertext` using CBC mode and PKCS#7 padding, with the given
         initialization vector (iv).
@@ -307,4 +307,6 @@ class AES:
             blocks.append(xor_bytes(previous, self.decrypt_block(ciphertext_block)))
             previous = ciphertext_block
 
-        return unpad(b''.join(blocks))
+        if padded_data:
+            return unpad(b''.join(blocks))
+        return b''.join(blocks)
