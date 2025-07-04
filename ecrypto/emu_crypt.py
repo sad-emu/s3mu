@@ -4,6 +4,7 @@ import os
 import ecrypto.sync.aes as aes
 import ecrypto.tools as tools
 
+
 # format is:
 # header 4 bytes
 # mode 2 bytes
@@ -17,7 +18,11 @@ CRYPT_HEADER_LEN = 4
 CRYPT_HEADER = b'ecpt'
 CRYPT_MODE_LEN = 2
 CRYPT_MODE_ONE = 1
+CRYPT_MODE_TWO = 2
 CRYPT_MODE_ONE_WORKLOAD = 999999
+CRYPT_MODE_TWO_WORKLOAD = 10000
+
+CRYPT_MODE_TWO_KEY_SIZE = 32
 
 CRYPT_STREAM_MODE_ENCRYPT = 'ENCRYPT'
 CRYPT_STREAM_MODE_DECRYPT = 'DECRYPT'
@@ -27,30 +32,44 @@ class EmuCrypt:
     _salt = None
     _block_iv = None
     _stream_mode = None
+    _crypt_mode = None
     _secret = None
+    _enc_secret = None
     _output_stream = None
     _data_buffer = None
     _decrypt_tail = None
     _first_write = None
     _workload = None
     _closed = None
+    _ek = None
+    _kem = None
 
     def setup_for_encrypt(self):
         self._iv = os.urandom(aes.IV_SIZE)
         self._salt = os.urandom(aes.IV_SIZE)
-        if isinstance(self._secret, str):
-            self._secret = self._secret.encode('utf-8')
-        self._secret = EmuCrypt.gen_hash(self._salt, self._secret, self._workload, aes.KEY_SIZE)
+        if self._crypt_mode == CRYPT_MODE_ONE:
+            if isinstance(self._secret, str):
+                self._secret = self._secret.encode('utf-8')
+            self._secret = EmuCrypt.gen_hash(self._salt, self._secret, self._workload, aes.KEY_SIZE)
+        if self._crypt_mode == CRYPT_MODE_TWO:
+            secret, ciphertext = self._kem.encaps(self._ek)
+            self._secret = EmuCrypt.gen_hash(self._salt, secret, self._workload, aes.KEY_SIZE)
+            self._enc_secret = ciphertext # encrypt secret with EK
 
     def setup_for_decrypt(self):
+        if self._secret is None:
+            return
         if isinstance(self._secret, str):
             self._secret = self._secret.encode('utf-8')
 
-    def __init__(self, stream_mode, secret, output_stream, crypt_mode=CRYPT_MODE_ONE):
-        self._secret = secret
+    def __init__(self, stream_mode, secret_key, output_stream, crypt_mode=CRYPT_MODE_ONE, ek=None, kem=None):
+        self._secret = secret_key
+        self._crypt_mode = crypt_mode
         if stream_mode == CRYPT_STREAM_MODE_ENCRYPT:
             if crypt_mode == CRYPT_MODE_ONE:
                 self._workload = CRYPT_MODE_ONE_WORKLOAD
+            elif crypt_mode == CRYPT_MODE_TWO:
+                self._workload = CRYPT_MODE_TWO_WORKLOAD
             self.setup_for_encrypt()
         elif stream_mode == CRYPT_STREAM_MODE_DECRYPT:
             self.setup_for_decrypt()
@@ -60,6 +79,8 @@ class EmuCrypt:
         self._output_stream = output_stream
         self._data_buffer = bytearray(b'')
         self._first_write = True
+        self._ek = ek
+        self._kem = kem
         self._closed = False
 
     # Write to the output stream
@@ -74,6 +95,8 @@ class EmuCrypt:
                 write_bytes.extend(tools.int_to_bytes(CRYPT_MODE_ONE, CRYPT_MODE_LEN))
                 write_bytes.extend(self._iv)
                 write_bytes.extend(self._salt)
+                if self._stream_mode == CRYPT_MODE_TWO:
+                    write_bytes.extend(self._enc_secret) # Write the AES encrypted key here
                 self._output_stream.write(write_bytes)
                 self._block_iv = self._iv
             self._data_buffer.extend(bytes_to_write)
@@ -100,13 +123,18 @@ class EmuCrypt:
                     raise ValueError("Data does not have expected header")
                 mode = self._data_buffer[pos:pos + CRYPT_MODE_LEN]
                 pos += CRYPT_MODE_LEN
-                if mode != tools.int_to_bytes(CRYPT_MODE_ONE, CRYPT_MODE_LEN):
-                    raise ValueError("Block decrypt only supports MODE_ONE not " + str(tools.bytes_to_int(mode)))
+                if mode != tools.int_to_bytes(CRYPT_MODE_ONE, CRYPT_MODE_LEN) and \
+                    mode != tools.int_to_bytes(CRYPT_MODE_TWO, CRYPT_MODE_LEN):
+                    raise ValueError("Stream decrypt only supports MODE_ONE&TWO not " + str(tools.bytes_to_int(mode)))
                 min_start_bytes = 0
                 if mode == tools.int_to_bytes(CRYPT_MODE_ONE, CRYPT_MODE_LEN):
                     self._workload = CRYPT_MODE_ONE_WORKLOAD
                     # min bytes to start mode one
                     min_start_bytes = pos + aes.KEY_SIZE + aes.IV_SIZE
+                elif mode == tools.int_to_bytes(CRYPT_MODE_TWO, CRYPT_MODE_LEN):
+                    self._workload = CRYPT_MODE_TWO_WORKLOAD
+                    # min bytes to start mode one
+                    min_start_bytes = pos + aes.KEY_SIZE + aes.IV_SIZE + CRYPT_MODE_TWO_KEY_SIZE
                 # We can't start until we have the full header
                 if len(self._data_buffer) <  min_start_bytes:
                     return
@@ -116,9 +144,18 @@ class EmuCrypt:
                 pos += aes.IV_SIZE
                 self._salt = self._data_buffer[pos:pos + aes.KEY_SIZE]
                 pos += aes.KEY_SIZE
+                if mode == tools.int_to_bytes(CRYPT_MODE_TWO, CRYPT_MODE_LEN):
+                    self._enc_secret = self._data_buffer[pos:pos + aes.KEY_SIZE]
+                    pos += aes.KEY_SIZE
                 self._data_buffer = self._data_buffer[pos:]
                 self._decrypt_tail = bytearray(b'')
-                self._secret = EmuCrypt.gen_hash(self._salt, self._secret, self._workload, aes.KEY_SIZE)
+                if mode == tools.int_to_bytes(CRYPT_MODE_ONE, CRYPT_MODE_LEN):
+                    self._secret = EmuCrypt.gen_hash(self._salt, self._secret,
+                                                     self._workload, aes.KEY_SIZE)
+                elif mode == tools.int_to_bytes(CRYPT_MODE_TWO, CRYPT_MODE_LEN):
+                    self._secret = self._kem.decaps(self._ek, self._enc_secret)
+                    self._secret = EmuCrypt.gen_hash(self._salt, self._secret,
+                                                     self._workload, aes.KEY_SIZE)
                 self._first_write = False
 
             next_write_max_size = len(self._data_buffer)
@@ -137,6 +174,7 @@ class EmuCrypt:
             self._block_iv = next_block_iv
             self._decrypt_tail = plaintext[len(plaintext)-(aes.BLOCK_SIZE + aes.IV_SIZE):]
 
+    # TODO hash for type 2 stream
     # Flush the stream
     def flush(self):
         if self._closed:
@@ -151,6 +189,9 @@ class EmuCrypt:
             self._output_stream.write(aes.unpad(self._decrypt_tail))
         self._decrypt_tail = b''
         self._secret = b''
+        self._enc_secret = b''
+        self._ek = b''
+        self._kem = b''
         self._iv = b''
         self._salt = b''
         self._data_buffer = b''

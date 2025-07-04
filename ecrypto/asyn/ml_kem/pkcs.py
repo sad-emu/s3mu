@@ -75,6 +75,7 @@ def ek_from_der(enc_key):
 
     alg_id, rem = remove_sequence(s1)
 
+    # It IS in there, just not being parsed correctly - TODO fix
     alg_id, rest = remove_object(alg_id)
     if alg_id not in OIDS:
         raise ValueError(f"Not recognised algoritm OID: {alg_id}")

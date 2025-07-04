@@ -8,10 +8,16 @@ def topem(der_bytes: bytes, label: str = "PRIVATE KEY") -> bytes:
     lines.append(f"-----END {label}-----".encode())
     return b"\n".join(lines) + b"\n"
 
-def unpem(pem_bytes: bytes) -> bytes:
-    lines = pem_bytes.splitlines()
-    b64_data = b"".join(line for line in lines if not line.startswith(b"-----"))
-    return base64.b64decode(b64_data)
+def unpem(pem_data) -> bytes:
+    if isinstance(pem_data, str):
+        pem_data = pem_data.encode('ascii')
+
+    pem_data = pem_data.replace(b'-----BEGIN PRIVATE KEY-----', b'')
+    pem_data = pem_data.replace(b'-----END PRIVATE KEY-----', b'')
+    pem_data = pem_data.replace(b'-----BEGIN PUBLIC KEY-----', b'')
+    pem_data = pem_data.replace(b'-----END PUBLIC KEY-----', b'')
+
+    return base64.b64decode(pem_data)
 
 def _read_length(data):
     if data[0] < 0x80:
