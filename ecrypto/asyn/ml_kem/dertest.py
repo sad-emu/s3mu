@@ -57,6 +57,17 @@ def encode_length(length):
     l_bytes = length.to_bytes((length.bit_length() + 7) // 8, "big")
     return bytes([0x80 | len(l_bytes)]) + l_bytes
 
+def encode_bitstring(data: bytes, tag_num: int = None) -> bytes:
+    # Prepend unused bits byte (0)
+    content = b'\x00' + data
+
+    if tag_num is None:
+        tag = 0x03  # Universal BIT STRING tag
+    else:
+        tag = 0x80 | tag_num  # Context-specific implicit tag
+
+    return bytes([tag]) + encode_length(len(content)) + content
+
 def encode_integer(n):
     b = n.to_bytes((n.bit_length() + 7) // 8 or 1, "big")
     if b[0] & 0x80:
@@ -90,3 +101,20 @@ def encode_oid(*oid_nums):
 def encode_implicit(tag_num, content):
     tag = 0x80 | tag_num
     return bytes([tag]) + encode_length(len(content)) + content
+
+def is_sequence(data: bytes) -> bool:
+    return data and data[0] == 0x30
+
+def remove_bitstring(data: bytes, tag_num: int = None):
+    tag = data[0]
+    if tag_num is not None:
+        expected_tag = 0x80 | tag_num  # context-specific implicit
+        if tag != expected_tag:
+            raise ValueError(f"Unexpected tag: got {tag:#x}, expected {expected_tag:#x}")
+    _, content, rest = _read_tag(data)
+    if not content:
+        raise ValueError("BIT STRING is empty")
+    unused_bits = content[0]
+    if unused_bits != 0:
+        raise ValueError("BIT STRING has unused bits (only 0 is supported)")
+    return content[1:], rest

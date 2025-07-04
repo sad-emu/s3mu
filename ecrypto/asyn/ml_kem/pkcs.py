@@ -7,10 +7,10 @@ of the public keys (encapsulation keys) from the Subject Public Key Info
 format used in X.509 certificates and in bare public keys.
 """
 
-try:
-    from ecdsa import der
-except ImportError:
-    raise ImportError("PKCS functionality requires the ecdsa library")
+# try:
+#     from ecdsa import der
+# except ImportError:
+#     raise ImportError("PKCS functionality requires the ecdsa library")
 
 from .default_parameters import ML_KEM_512, ML_KEM_768, ML_KEM_1024
 from ecrypto.asyn.ml_kem.dertest import *
@@ -37,11 +37,11 @@ def ek_to_der(kem, ek):
     if len(ek) != kem._ek_size():
         raise ValueError(f"Provided key size doesn't match the provided kem")
 
-    enc = der.encode_sequence(
-        der.encode_sequence(
-            der.encode_oid(*kem.oid),
+    enc = encode_sequence(
+        encode_sequence(
+            encode_oid(*kem.oid),
         ),
-        der.encode_bitstring(ek, 0),
+        encode_bitstring(ek, 0),
     )
 
     return enc
@@ -57,7 +57,7 @@ def ek_to_pem(kem, ek):
     """
     der_enc = ek_to_der(kem, ek)
 
-    pem_enc = der.topem(der_enc, "PUBLIC KEY")
+    pem_enc = topem(der_enc, "PUBLIC KEY")
 
     return pem_enc
 
@@ -69,26 +69,26 @@ def ek_from_der(enc_key):
     :param bytes enc_key: SPKI DER encoding of a key
     :rtype: tuple(ML_KEM, bytes)
     """
-    s1, empty = der.remove_sequence(enc_key)
+    s1, empty = remove_sequence(enc_key)
     if empty:
-        raise der.UnexpectedDER("Trailing junk after DER public key")
+        raise ValueError("Trailing junk after DER public key")
 
-    alg_id, rem = der.remove_sequence(s1)
+    alg_id, rem = remove_sequence(s1)
 
-    alg_id, rest = der.remove_object(alg_id)
+    alg_id, rest = remove_object(alg_id)
     if alg_id not in OIDS:
-        raise der.UnexpectedDER(f"Not recognised algoritm OID: {alg_id}")
+        raise ValueError(f"Not recognised algoritm OID: {alg_id}")
     if rest:
-        raise der.UnexpectedDER("Parameters specified for ML-KEM OID")
+        raise ValueError("Parameters specified for ML-KEM OID")
 
     kem = OIDS[alg_id]
 
-    key, empty = der.remove_bitstring(rem, 0)
+    key, empty = remove_bitstring(rem, 0)
     if empty:
-        raise der.UnexpectedDER("Trailing junk after public key bitsting")
+        raise ValueError("Trailing junk after public key bitsting")
 
     if len(key) != kem._ek_size():
-        raise der.UnexpectedDER("Wrong key size for the OID in structure")
+        raise ValueError("Wrong key size for the OID in structure")
 
     return kem, key
 
@@ -100,9 +100,8 @@ def ek_from_pem(enc_key):
     :param str enc_key: SPKI PEM encoding of a key
     :rtype: tuple(ML_KEM, bytes)
     """
-    der_key = der.unpem(enc_key)
+    der_key = unpem(enc_key)
     return ek_from_der(der_key)
-
 
 def dk_to_der(kem, dk=None, seed=None, form=None):
     """
@@ -155,19 +154,19 @@ def dk_to_der(kem, dk=None, seed=None, form=None):
         _, dk = kem.key_derive(seed)
 
     if form == "seed":
-        enc_key = der.encode_implicit(0, seed)
+        enc_key = encode_implicit(0, seed)
     elif form == "expanded":
-        enc_key = der.encode_octet_string(dk)
+        enc_key = encode_octet_string(dk)
     else:
         assert form == "both"
-        enc_key = der.encode_sequence(
-            der.encode_octet_string(seed), der.encode_octet_string(dk)
+        enc_key = encode_sequence(
+            encode_octet_string(seed), encode_octet_string(dk)
         )
 
-    encoded_pkcs8 = der.encode_sequence(
-        der.encode_integer(0),
-        der.encode_sequence(der.encode_oid(*kem.oid)),
-        der.encode_octet_string(enc_key),
+    encoded_pkcs8 = encode_sequence(
+        encode_integer(0),
+        encode_sequence(encode_oid(*kem.oid)),
+        encode_octet_string(enc_key),
     )
 
     return encoded_pkcs8
@@ -196,7 +195,7 @@ def dk_to_pem(kem, dk=None, seed=None, form=None):
     """
     der_enc = dk_to_der(kem, dk, seed, form)
 
-    pem_enc = der.topem(der_enc, "PRIVATE KEY")
+    pem_enc = topem(der_enc, "PRIVATE KEY")
 
     return pem_enc
 
@@ -211,60 +210,60 @@ def dk_from_der(enc_key):
         and fourth is the encapsulation key.
     :rtype: tuple(ML_KEM, bytes, bytes, bytes)
     """
-    s1, empty = der.remove_sequence(enc_key)
+    s1, empty = remove_sequence(enc_key)
     if empty:
-        raise der.UnexpectedDER("Trailing junk after private key structure")
+        raise ValueError("Trailing junk after private key structure")
 
-    ver, rest = der.remove_integer(s1)
+    ver, rest = remove_integer(s1)
 
     if ver != 0:
-        raise der.UnexpectedDER(f"Unsupported version: {ver}")
+        raise ValueError(f"Unsupported version: {ver}")
 
-    alg_id, rest = der.remove_sequence(rest)
+    alg_id, rest = remove_sequence(rest)
 
-    alg_id, empty = der.remove_object(alg_id)
+    alg_id, empty = remove_object(alg_id)
     if alg_id not in OIDS:
-        raise der.UnexpectedDER(f"Not recognised algorithm OID: {alg_id}")
+        raise ValueError(f"Not recognised algorithm OID: {alg_id}")
     if empty:
-        raise der.UnexpectedDER("Junk after algorithm OID")
+        raise ValueError("Junk after algorithm OID")
 
     kem = OIDS[alg_id]
 
-    priv_key, _ = der.remove_octet_string(rest)
+    priv_key, _ = remove_octet_string(rest)
     # "rest" here can be either parameters of public key: we ignore those
 
     seed = None
     expanded = None
     ek = None
 
-    if der.str_idx_as_int(priv_key, 0) == 0x04:
+    if priv_key[0] == 0x04:
         # we have OCTET STRING: expanded only format
-        expanded, empty = der.remove_octet_string(priv_key)
+        expanded, empty = remove_octet_string(priv_key)
         if empty:
-            raise der.UnexpectedDER("Junk after expandedKey")
-    elif der.is_sequence(priv_key):
-        both, empty = der.remove_sequence(priv_key)
+            raise ValueError("Junk after expandedKey")
+    elif is_sequence(priv_key):
+        both, empty = remove_sequence(priv_key)
         if empty:
-            raise der.UnexpectedDER("Junk after both encoding")
-        seed, key_val = der.remove_octet_string(both)
-        expanded, empty = der.remove_octet_string(key_val)
+            raise ValueError("Junk after both encoding")
+        seed, key_val = remove_octet_string(both)
+        expanded, empty = remove_octet_string(key_val)
         if empty:
-            raise der.UnexpectedDER("Junk after 'expandedKey' in 'both' value")
+            raise ValueError("Junk after 'expandedKey' in 'both' value")
     else:
-        tag, seed, empty = der.remove_implicit(priv_key)
+        tag, seed, empty = remove_implicit(priv_key)
         if tag != 0:
-            raise der.UnexpectedDER(f"Unexpected tag in private key encoding")
+            raise ValueError(f"Unexpected tag in private key encoding")
         if empty:
-            raise der.UnexpectedDER("Junk after seed encoding")
+            raise ValueError("Junk after seed encoding")
 
     if expanded and len(expanded) != kem._dk_size():
-        raise der.UnexpectedDER("Invalid expanded key size in encoding")
+        raise ValueError("Invalid expanded key size in encoding")
 
     if not expanded:
         ek, expanded = kem.key_derive(seed)
 
     if seed and len(seed) != 64:
-        raise der.UnexpectedDER("Invalid length of seed in encoding")
+        raise ValueError("Invalid length of seed in encoding")
 
     if not ek:
         ek = expanded[384 * kem.k : 768 * kem.k + 32]
@@ -282,5 +281,5 @@ def dk_from_pem(enc_key):
         and fourth is the encapsulation key.
     :rtype: tuple(ML_KEM, bytes, bytes, bytes)
     """
-    der_key = der.unpem(enc_key)
+    der_key = unpem(enc_key)
     return dk_from_der(der_key)
