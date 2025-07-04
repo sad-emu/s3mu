@@ -10,7 +10,6 @@ from ecrypto.asyn.ml_kem.pkcs import (
     dk_to_pem,
 )
 
-
 def help_msg():
     print(
         f"""Usage: {sys.argv[0]} [options]

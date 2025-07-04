@@ -13,6 +13,7 @@ except ImportError:
     raise ImportError("PKCS functionality requires the ecdsa library")
 
 from .default_parameters import ML_KEM_512, ML_KEM_768, ML_KEM_1024
+from ecrypto.asyn.ml_kem.dertest import *
 
 
 OIDS = {
