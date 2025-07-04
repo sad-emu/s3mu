@@ -1,9 +1,8 @@
 import hashlib
 import os
-from enum import nonmember
 
-import crypto.aes as aes
-import crypto.tools as tools
+import ecrypto.sync.aes as aes
+import ecrypto.tools as tools
 
 # format is:
 # header 4 bytes
@@ -88,8 +87,8 @@ class EmuCrypt:
             self._data_buffer = self._data_buffer[next_write_len:next_write_max_size] # shift the remaining data
             ciphertext = aes.AES(self._secret).encrypt_cbc(write_bytes, self._block_iv)
             # the last block is padding, drop it. The 2nd last block is the next IV
-            self._output_stream.write(ciphertext[0:len(ciphertext)-aes.BLOCK_SIZE])
-            self._block_iv = ciphertext[len(ciphertext)-(aes.BLOCK_SIZE * 2):len(ciphertext)-aes.BLOCK_SIZE]
+            self._output_stream.write(ciphertext[0:len(ciphertext) - aes.BLOCK_SIZE])
+            self._block_iv = ciphertext[len(ciphertext)-(aes.BLOCK_SIZE * 2):len(ciphertext) - aes.BLOCK_SIZE]
         else:
             self._data_buffer.extend(bytes_to_write)
             if self._first_write:
@@ -129,14 +128,14 @@ class EmuCrypt:
             next_write_len = next_write_max_size - next_write_remainder
             write_bytes = bytearray(b'')
             write_bytes.extend(self._data_buffer[0:next_write_len]) # do we need this copy?
-            next_block_iv = write_bytes[next_write_len-aes.BLOCK_SIZE:next_write_len]
+            next_block_iv = write_bytes[next_write_len - aes.BLOCK_SIZE:next_write_len]
             self._data_buffer = self._data_buffer[next_write_len:next_write_max_size] # shift the remaining data
             plaintext = aes.AES(self._secret).decrypt_cbc(write_bytes, self._block_iv, padded_data=False)
             # the last block is padding, drop it. The 2nd last block is the next IV
             self._output_stream.write(self._decrypt_tail)
-            self._output_stream.write(plaintext[0:len(plaintext)-(aes.BLOCK_SIZE+aes.IV_SIZE)])
+            self._output_stream.write(plaintext[0:len(plaintext)-(aes.BLOCK_SIZE + aes.IV_SIZE)])
             self._block_iv = next_block_iv
-            self._decrypt_tail = plaintext[len(plaintext)-(aes.BLOCK_SIZE+aes.IV_SIZE):]
+            self._decrypt_tail = plaintext[len(plaintext)-(aes.BLOCK_SIZE + aes.IV_SIZE):]
 
     # Flush the stream
     def flush(self):

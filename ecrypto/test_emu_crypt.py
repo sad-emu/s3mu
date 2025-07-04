@@ -1,7 +1,7 @@
 import unittest
 import io
 
-from crypto.emu_crypt import EmuCrypt, CRYPT_STREAM_MODE_ENCRYPT, CRYPT_MODE_ONE, CRYPT_STREAM_MODE_DECRYPT
+from ecrypto.emu_crypt import EmuCrypt, CRYPT_STREAM_MODE_ENCRYPT, CRYPT_MODE_ONE, CRYPT_STREAM_MODE_DECRYPT
 
 
 class TestStringMethods(unittest.TestCase):
