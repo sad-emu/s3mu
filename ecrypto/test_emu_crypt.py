@@ -1,7 +1,9 @@
+import os
 import unittest
 import io
 
-from ecrypto.asyn.ml_kem.pkcs import ek_from_pem, dk_from_pem
+from ecrypto.asyn.ml_kem import ML_KEM_1024
+from ecrypto.asyn.ml_kem.pkcs import ek_from_pem, dk_from_pem, dk_to_pem, ek_to_pem
 from ecrypto.emu_crypt import EmuCrypt, CRYPT_STREAM_MODE_ENCRYPT, CRYPT_MODE_ONE, CRYPT_STREAM_MODE_DECRYPT, \
     CRYPT_MODE_TWO
 
@@ -106,7 +108,59 @@ class TestStringMethods(unittest.TestCase):
         plaintext = mem_out_stream.read()
         self.assertEqual(secret, plaintext)
 
-    def test_stream_encrypt_stream_decrypt_mode_two(self):
+    def test_stream_encrypt_stream_decrypt_mode_two_1024_keys(self):
+        kem = ML_KEM_1024
+        seed = os.urandom(64)
+
+        ek, dk = kem.key_derive(seed)
+
+        dks = dk_to_pem(kem, dk=dk)
+        eks = ek_to_pem(kem, ek)
+
+        kem, ek = ek_from_pem(eks)
+
+        secret = (b"fdasfdafdafadfadfdsafdasfasdfdsafadsfasdf"
+                  b"FFFFFFFFFFFFFFFFFFFFFfff"
+                  b"SSSSSSSSSSSSSSSSSSSSSSSs"
+                  b"43254365789590098765432w"
+                  b"43254365789590098765432d"
+                  b"43254365789590098765432a"
+                  b"43254365789590098765432c"
+                  b"43254365789590098765432b"
+                  b"43254365789590098765432g")
+
+        mem_out_stream = io.BytesIO()
+
+        ec = EmuCrypt(CRYPT_STREAM_MODE_ENCRYPT, None, mem_out_stream, CRYPT_MODE_TWO, kem=kem, ek=ek)
+
+        ec.write(secret[0:12])
+        ec.write(secret[12:56])
+        ec.write(secret[56:111])
+        ec.write(secret[111:])
+        ec.flush()
+
+        mem_out_stream.seek(0)
+        ciphertext = mem_out_stream.read()
+
+        mem_out_stream = io.BytesIO()
+        self.assertNotEqual(secret, ciphertext)
+
+        kem, dk, _, _ = dk_from_pem(dks)
+
+        ec = EmuCrypt(CRYPT_STREAM_MODE_DECRYPT, None, mem_out_stream, CRYPT_MODE_TWO, kem=kem, ek=dk)
+
+        ec.write(ciphertext[0:12])
+        ec.write(ciphertext[12:56])
+        ec.write(ciphertext[56:111])
+        ec.write(ciphertext[111:])
+        ec.flush()
+
+        mem_out_stream.seek(0)
+        plaintext = mem_out_stream.read()
+        self.assertEqual(secret, plaintext)
+
+
+    def test_stream_encrypt_stream_decrypt_mode_two_512_keys(self):
         eks = "-----BEGIN PUBLIC KEY-----" \
              "MIIDMjALBglghkgBZQMEBAGAggMhAMy6w9Vpi0IDbPPZo3N5ekrxQs7LX3vxoe9osbI6a+18ZX9D" \
              "FjAAcVXYed9xbwjRnZoGI3ZBy9uZek4lqxXVE3y4NcCmCzbsNWiwxuQgbxZMHc30RqxmRLV5zv7E" \
@@ -200,5 +254,3 @@ class TestStringMethods(unittest.TestCase):
         mem_out_stream.seek(0)
         plaintext = mem_out_stream.read()
         self.assertEqual(secret, plaintext)
-
-

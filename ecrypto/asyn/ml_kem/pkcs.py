@@ -13,7 +13,7 @@ format used in X.509 certificates and in bare public keys.
 #     raise ImportError("PKCS functionality requires the ecdsa library")
 
 from .default_parameters import ML_KEM_512, ML_KEM_768, ML_KEM_1024
-from ecrypto.asyn.ml_kem.dertest import *
+from ecrypto.asyn.ml_kem.lite_der import *
 
 
 OIDS = {
@@ -77,12 +77,19 @@ def ek_from_der(enc_key):
 
     # It IS in there, just not being parsed correctly - TODO fix
     alg_id, rest = remove_object(alg_id)
-    if alg_id not in OIDS:
-        raise ValueError(f"Not recognised algoritm OID: {alg_id}")
+
+    if alg_id[-1:] == b'\x01':
+        kem = OIDS[ML_KEM_512.oid]
+    if alg_id[-1:] == b'\x02':
+        kem = OIDS[ML_KEM_768.oid]
+    if alg_id[-1:] == b'\x03':
+        kem = OIDS[ML_KEM_1024.oid]
+    # if alg_id not in OIDS:
+    #     raise ValueError(f"Not recognised algoritm OID: {alg_id}")
     if rest:
         raise ValueError("Parameters specified for ML-KEM OID")
 
-    kem = OIDS[alg_id]
+    # kem = OIDS[alg_id]
 
     key, empty = remove_bitstring(rem, 0)
     if empty:
@@ -223,12 +230,18 @@ def dk_from_der(enc_key):
     alg_id, rest = remove_sequence(rest)
 
     alg_id, empty = remove_object(alg_id)
-    if alg_id not in OIDS:
-        raise ValueError(f"Not recognised algorithm OID: {alg_id}")
+    if alg_id[-1:] == b'\x01':
+        kem = OIDS[ML_KEM_512.oid]
+    if alg_id[-1:] == b'\x02':
+        kem = OIDS[ML_KEM_768.oid]
+    if alg_id[-1:] == b'\x03':
+        kem = OIDS[ML_KEM_1024.oid]
+    # if alg_id not in OIDS:
+    #     raise ValueError(f"Not recognised algorithm OID: {alg_id}")
     if empty:
         raise ValueError("Junk after algorithm OID")
 
-    kem = OIDS[alg_id]
+    #kem = OIDS[alg_id]
 
     priv_key, _ = remove_octet_string(rest)
     # "rest" here can be either parameters of public key: we ignore those
