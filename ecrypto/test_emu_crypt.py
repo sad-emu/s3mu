@@ -127,6 +127,10 @@ class TestStringMethods(unittest.TestCase):
                   b"43254365789590098765432a"
                   b"43254365789590098765432c"
                   b"43254365789590098765432b"
+                  b"43254365789590098765432c"
+                  b"43254365789590098765432b"
+                  b"43254365789590098765432c"
+                  b"43254365789590098765432b"
                   b"43254365789590098765432g")
 
         mem_out_stream = io.BytesIO()
@@ -136,7 +140,8 @@ class TestStringMethods(unittest.TestCase):
         ec.write(secret[0:12])
         ec.write(secret[12:56])
         ec.write(secret[56:111])
-        ec.write(secret[111:])
+        ec.write(secret[111:178])
+        ec.write(secret[178:])
         ec.flush()
 
         mem_out_stream.seek(0)
@@ -152,7 +157,9 @@ class TestStringMethods(unittest.TestCase):
         ec.write(ciphertext[0:12])
         ec.write(ciphertext[12:56])
         ec.write(ciphertext[56:111])
-        ec.write(ciphertext[111:])
+        ec.write(ciphertext[111:155])
+        ec.write(ciphertext[155:249])
+        ec.write(ciphertext[249:])
         ec.flush()
 
         mem_out_stream.seek(0)
