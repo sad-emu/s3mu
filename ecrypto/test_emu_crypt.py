@@ -79,7 +79,7 @@ class TestStringMethods(unittest.TestCase):
                   b"43254365789590098765432a"
                   b"43254365789590098765432c"
                   b"43254365789590098765432b"
-                  b"43254365789590098765432g")
+                  b"43254365789590098765432gENDEND")
 
         mem_out_stream = io.BytesIO()
 

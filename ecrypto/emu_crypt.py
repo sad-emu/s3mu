@@ -192,14 +192,14 @@ class EmuCrypt:
             write_bytes = bytearray(b'')
             write_bytes.extend(self._data_buffer[0:next_write_len]) # do we need this copy?
             next_block_iv = write_bytes[next_write_len - aes.BLOCK_SIZE:next_write_len]
-            self._data_buffer = self._data_buffer[next_write_len:next_write_max_size] # shift the remaining data
+            self._data_buffer = self._data_buffer[next_write_len:] # shift the remaining data
             self._hash.update(write_bytes)
             plaintext = aes.AES(self._secret).decrypt_cbc(write_bytes, self._block_iv, padded_data=False)
             # the last block is padding, drop it. The 2nd last block is the next IV
             self._output_stream.write(self._decrypt_tail)
-            self._output_stream.write(plaintext[0:len(plaintext)-(aes.BLOCK_SIZE + aes.IV_SIZE + CRYPT_HASH_LEN)])
+            self._output_stream.write(plaintext[0:len(plaintext)-CRYPT_TAIL_BUFFER])
             self._block_iv = next_block_iv
-            self._decrypt_tail = plaintext[len(plaintext)-(aes.BLOCK_SIZE + aes.IV_SIZE + CRYPT_HASH_LEN):]
+            self._decrypt_tail = plaintext[len(plaintext)-CRYPT_TAIL_BUFFER:]
 
     # TODO hash for type 2 stream
     # Flush the stream
@@ -214,7 +214,10 @@ class EmuCrypt:
             self._output_stream.write(self._hash.digest())
         else:
             block_hash = None
-            if len(self._data_buffer) != 0 and len(self._decrypt_tail) == 0:
+            if len(self._data_buffer) != 0:
+                if len(self._decrypt_tail) != 0:
+                    self._output_stream.write(self._decrypt_tail)
+                    self._decrypt_tail = b''
                 self._hash.update(self._data_buffer[0:len(self._data_buffer) - CRYPT_HASH_LEN])
                 write_bytes = self._data_buffer[0:len(self._data_buffer) - CRYPT_HASH_LEN]
                 plaintext = aes.AES(self._secret).decrypt_cbc(write_bytes, self._block_iv, padded_data=True)
