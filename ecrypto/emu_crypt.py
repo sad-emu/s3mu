@@ -24,11 +24,13 @@ import ecrypto.tools as tools
 
 CRYPT_HEADER_LEN = 4
 CRYPT_HEADER = b'ecpt'
+CRYPT_HASH_LEN = 32
 CRYPT_MODE_LEN = 2
 CRYPT_MODE_ONE = 1
 CRYPT_MODE_TWO = 2
 CRYPT_MODE_ONE_WORKLOAD = 999999
 CRYPT_MODE_TWO_WORKLOAD = 10000
+CRYPT_TAIL_BUFFER = 64 # retain this many bytes for hash processing
 
 CRYPT_MODE_TWO_KEY_SIZE_LEN = 2
 
@@ -51,6 +53,7 @@ class EmuCrypt:
     _closed = None
     _ek = None
     _kem = None
+    _hash = None
     _mode_two_key_len = None
 
     def setup_for_encrypt(self):
@@ -91,6 +94,7 @@ class EmuCrypt:
         self._data_buffer = bytearray(b'')
         self._first_write = True
         self._mode_two_key_len = 0
+        self._hash = hashlib.sha256()
         self._closed = False
 
     # Write to the output stream
@@ -120,6 +124,7 @@ class EmuCrypt:
             write_bytes.extend(self._data_buffer[0:next_write_len]) # do we need this copy?
             self._data_buffer = self._data_buffer[next_write_len:next_write_max_size] # shift the remaining data
             ciphertext = aes.AES(self._secret).encrypt_cbc(write_bytes, self._block_iv)
+            self._hash.update(ciphertext[0:len(ciphertext) - aes.BLOCK_SIZE])
             # the last block is padding, drop it. The 2nd last block is the next IV
             self._output_stream.write(ciphertext[0:len(ciphertext) - aes.BLOCK_SIZE])
             self._block_iv = ciphertext[len(ciphertext)-(aes.BLOCK_SIZE * 2):len(ciphertext) - aes.BLOCK_SIZE]
@@ -179,21 +184,22 @@ class EmuCrypt:
                                                      self._workload, aes.KEY_SIZE)
                 self._first_write = False
 
-            next_write_max_size = len(self._data_buffer)
-            if next_write_max_size < 32:
-                return # we cannot do anything with less than 32 bytes due to padding
+            next_write_max_size = len(self._data_buffer) - CRYPT_TAIL_BUFFER
+            if next_write_max_size < CRYPT_TAIL_BUFFER:
+                return # we cannot do anything with less than CRYPT_TAIL_BUFFER bytes due to padding & hashes
             next_write_remainder = (next_write_max_size % 16)
             next_write_len = next_write_max_size - next_write_remainder
             write_bytes = bytearray(b'')
             write_bytes.extend(self._data_buffer[0:next_write_len]) # do we need this copy?
             next_block_iv = write_bytes[next_write_len - aes.BLOCK_SIZE:next_write_len]
             self._data_buffer = self._data_buffer[next_write_len:next_write_max_size] # shift the remaining data
+            self._hash.update(write_bytes)
             plaintext = aes.AES(self._secret).decrypt_cbc(write_bytes, self._block_iv, padded_data=False)
             # the last block is padding, drop it. The 2nd last block is the next IV
             self._output_stream.write(self._decrypt_tail)
-            self._output_stream.write(plaintext[0:len(plaintext)-(aes.BLOCK_SIZE + aes.IV_SIZE)])
+            self._output_stream.write(plaintext[0:len(plaintext)-(aes.BLOCK_SIZE + aes.IV_SIZE + CRYPT_HASH_LEN)])
             self._block_iv = next_block_iv
-            self._decrypt_tail = plaintext[len(plaintext)-(aes.BLOCK_SIZE + aes.IV_SIZE):]
+            self._decrypt_tail = plaintext[len(plaintext)-(aes.BLOCK_SIZE + aes.IV_SIZE + CRYPT_HASH_LEN):]
 
     # TODO hash for type 2 stream
     # Flush the stream
@@ -201,13 +207,27 @@ class EmuCrypt:
         if self._closed:
             raise ValueError('This stream is already closed.')
         if self._stream_mode == CRYPT_STREAM_MODE_ENCRYPT:
-            # Just add padding
+            # Just add padding & hashing
             ciphertext = aes.AES(self._secret).encrypt_cbc(self._data_buffer, self._block_iv)
+            self._hash.update(ciphertext)
             self._output_stream.write(ciphertext)
+            self._output_stream.write(self._hash.digest())
         else:
-            if len(self._decrypt_tail) != aes.BLOCK_SIZE*2:
+            block_hash = None
+            if len(self._data_buffer) != 0 and len(self._decrypt_tail) == 0:
+                self._hash.update(self._data_buffer[0:len(self._data_buffer) - CRYPT_HASH_LEN])
+                write_bytes = self._data_buffer[0:len(self._data_buffer) - CRYPT_HASH_LEN]
+                plaintext = aes.AES(self._secret).decrypt_cbc(write_bytes, self._block_iv, padded_data=True)
+                self._output_stream.write(plaintext)
+                block_hash = self._data_buffer[len(self._data_buffer) - CRYPT_HASH_LEN:]
+            if len(self._decrypt_tail) != CRYPT_TAIL_BUFFER and len(self._decrypt_tail) != 0:
                 raise ValueError('Flush failed. Incorrect padding.')
-            self._output_stream.write(aes.unpad(self._decrypt_tail))
+            if block_hash is None:
+                block_hash = self._decrypt_tail[CRYPT_TAIL_BUFFER - CRYPT_HASH_LEN:]
+            if self._hash.digest() != block_hash:
+                raise ValueError('Hash mismatch on stream decrypt.')
+            if len(self._decrypt_tail) != 0:
+                self._output_stream.write(aes.unpad(self._decrypt_tail[0:CRYPT_TAIL_BUFFER-CRYPT_HASH_LEN]))
         self._decrypt_tail = b''
         self._secret = b''
         self._enc_secret = b''
@@ -215,6 +235,7 @@ class EmuCrypt:
         self._kem = b''
         self._iv = b''
         self._salt = b''
+        self._hash = b''
         self._data_buffer = b''
         self._closed = True
         self._output_stream.flush()
@@ -236,12 +257,15 @@ class EmuCrypt:
         salt = os.urandom(aes.IV_SIZE)
         key = EmuCrypt.gen_hash(salt, key, workload, aes.KEY_SIZE)
         ciphertext = aes.AES(key).encrypt_cbc(plaintext, iv)
+        block_hash = hashlib.sha256()
+        block_hash.update(ciphertext)
         return_bytes = bytearray(b'')
         return_bytes.extend(CRYPT_HEADER)
         return_bytes.extend(tools.int_to_bytes(CRYPT_MODE_ONE, CRYPT_MODE_LEN))
         return_bytes.extend(iv)
         return_bytes.extend(salt)
         return_bytes.extend(ciphertext)
+        return_bytes.extend(block_hash.digest())
         return return_bytes
 
     # First 16 bytes are the IV
@@ -268,6 +292,11 @@ class EmuCrypt:
         pos += aes.IV_SIZE
         salt = ciphertext[pos:pos + aes.KEY_SIZE]
         pos += aes.KEY_SIZE
-        ciphertext = ciphertext[pos:len(ciphertext)]
+        hash_block = ciphertext[len(ciphertext)-CRYPT_HASH_LEN:]
+        ciphertext = ciphertext[pos:len(ciphertext)-CRYPT_HASH_LEN]
+        block_hash = hashlib.sha256()
+        block_hash.update(ciphertext)
         key = EmuCrypt.gen_hash(salt, key, workload, aes.KEY_SIZE)
+        if hash_block != block_hash.digest():
+            raise ValueError("Incorrect hash on block decrypt")
         return aes.AES(key).decrypt_cbc(ciphertext, iv)
