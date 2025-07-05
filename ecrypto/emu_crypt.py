@@ -4,8 +4,8 @@ import os
 import ecrypto.sync.aes as aes
 import ecrypto.tools as tools
 
+# Format is:
 
-# format is:
 # header 4 bytes
 # mode 2 bytes
 
@@ -13,14 +13,14 @@ import ecrypto.tools as tools
 # IV
 # Salt
 # Ciphertext
-# TODO Ciphertext hash
+# 32 bytes Ciphertext hash
 
 # if mode 1 (ASYNC)
 # IV
 # Salt
-# 2 bytes length of next blob
-# Encrypted key (len above)
-# TODO Ciphertext hash
+# 2 bytes length of key
+# Encrypted key
+# 32 bytes Ciphertext hash
 
 CRYPT_HEADER_LEN = 4
 CRYPT_HEADER = b'ecpt'

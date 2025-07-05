@@ -12,7 +12,8 @@ Built using:
 
 ### Features
 
-1. Data is streamed
+1. Pure python. Only imports os, hashlib, unittest and base64
+2. Data is streamed
 2. Cyphertext is hashed and verified on decryption
 3. MODE_ONE for AES with a pre-shared key 
 4. MODE_TWO for AES with the key encrypted with PKI and stored in the payload
