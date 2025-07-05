@@ -9,10 +9,18 @@ import ecrypto.tools as tools
 # header 4 bytes
 # mode 2 bytes
 
-# if mode 0
+# if mode 1 (SYNC)
 # IV
 # Salt
 # Ciphertext
+# TODO Ciphertext hash
+
+# if mode 1 (ASYNC)
+# IV
+# Salt
+# 2 bytes length of next blob
+# Encrypted key (len above)
+# TODO Ciphertext hash
 
 CRYPT_HEADER_LEN = 4
 CRYPT_HEADER = b'ecpt'
@@ -23,8 +31,6 @@ CRYPT_MODE_ONE_WORKLOAD = 999999
 CRYPT_MODE_TWO_WORKLOAD = 10000
 
 CRYPT_MODE_TWO_KEY_SIZE_LEN = 2
-CRYPT_MODE_TWO_512_KEY_SIZE = 768
-CRYPT_MODE_TWO_1024_KEY_SIZE = 1568
 
 CRYPT_STREAM_MODE_ENCRYPT = 'ENCRYPT'
 CRYPT_STREAM_MODE_DECRYPT = 'DECRYPT'
@@ -57,7 +63,7 @@ class EmuCrypt:
         if self._crypt_mode == CRYPT_MODE_TWO:
             secret, ciphertext = self._kem.encaps(self._ek)
             self._secret = EmuCrypt.gen_hash(self._salt, secret, self._workload, aes.KEY_SIZE)
-            self._enc_secret = ciphertext # encrypt secret with EK
+            self._enc_secret = ciphertext
 
     def setup_for_decrypt(self):
         if self._secret is None:
