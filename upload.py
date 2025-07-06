@@ -1,6 +1,7 @@
 import boto3
 import os
 import argparse
+import datetime
 from helpers.estream import Estream
 from ecrypto.asyn.ml_kem.pkcs import ek_from_pem
 from ecrypto.emu_crypt import EmuCrypt, CRYPT_MODE_TWO, CRYPT_STREAM_MODE_ENCRYPT
@@ -16,6 +17,7 @@ def multipart_upload(file_path, bucket, key, part_size, ek, kem):
     parts = []
     outstream = Estream(part_size*3)
     ecrypt = EmuCrypt(CRYPT_STREAM_MODE_ENCRYPT, crypt_mode=CRYPT_MODE_TWO, ek=ek, kem=kem, output_stream=outstream)
+    flushed = False
 
     try:
         with open(file_path, 'rb') as f:
@@ -31,17 +33,19 @@ def multipart_upload(file_path, bucket, key, part_size, ek, kem):
 
                 if len(data) != 0:
                     ecrypt.write(data)
-                else:
+
+                if last and not flushed:
                     ecrypt.flush() # We are done
+                    flushed = True
 
                 if len(outstream) < part_size and not last:
                     continue # go again till we have enough data
 
-
                 push_data = outstream.pop(part_size)
 
                 if len(push_data) == 0:
-                    last = False # We have emptied the stream
+                    break
+
                 response = s3.upload_part(
                     Bucket=bucket,
                     Key=key,
@@ -92,8 +96,9 @@ def main():
     with open(args.encryption_pem, 'r') as file:
         ek_string = file.read()
     kem, ek = ek_from_pem(ek_string)
-
+    print("Starting timestamp:", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     multipart_upload(args.file_path, args.bucket_name, args.key, part_size, ek, kem)
+    print("Ending timestamp:", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 if __name__ == "__main__":
     main()

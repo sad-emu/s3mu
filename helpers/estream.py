@@ -23,6 +23,9 @@ class Estream:
         self._buffer.extend(bytes_to_write)
         self._size += write_len
 
+    def flush(self):
+        return
+
     def pop(self, num_bytes):
         if num_bytes > self._size:
             num_bytes = self._size
