@@ -1,8 +1,8 @@
-# s3mu
+# s3mu (Not yet working)
 
 This package is for a hobby project. Use at your own risk.
 
-Designed handle encryption and s3 upload/downloads.
+Designed to handle encryption and s3 upload/downloads.
 
 ### Requirements
 python 3.x (only tested on latest)
