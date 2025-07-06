@@ -10,6 +10,9 @@ Built using:
 1. AES - MIT Licence - https://github.com/boppreh/aes
 2. KYBER - MIT Licence - https://github.com/GiacomoPope/kyber-py
 
+### Requirements
+Python 3.x (only tested on latest)
+
 ### Features
 
 1. Pure python. Only imports os, hashlib, unittest and base64

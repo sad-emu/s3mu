@@ -74,7 +74,7 @@ class EmuCrypt:
         if isinstance(self._secret, str):
             self._secret = self._secret.encode('utf-8')
 
-    def __init__(self, stream_mode, secret_key, output_stream, crypt_mode=CRYPT_MODE_ONE, ek=None, kem=None):
+    def __init__(self, stream_mode, secret_key=None, output_stream=None, crypt_mode=CRYPT_MODE_ONE, ek=None, kem=None):
         self._secret = secret_key
         self._crypt_mode = crypt_mode
         self._ek = ek
