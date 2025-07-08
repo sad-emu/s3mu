@@ -195,6 +195,7 @@ class AES:
         assert len(master_key) in AES.rounds_by_key_size
         self.n_rounds = AES.rounds_by_key_size[len(master_key)]
         self._key_matrices = self._expand_key(master_key)
+        self._raw_key = master_key
 
     def _expand_key(self, master_key):
         """
@@ -274,7 +275,7 @@ class AES:
 
         return matrix2bytes(cipher_state)
 
-    def encrypt_cbc(self, plaintext, iv):
+    def encrypt_cbc(self, plaintext, iv, fast=False):
         """
         Encrypts `plaintext` using CBC mode and PKCS#7 padding, with the given
         initialization vector (iv).
@@ -283,30 +284,46 @@ class AES:
 
         plaintext = pad(plaintext)
 
-        blocks = []
-        previous = iv
-        for plaintext_block in split_blocks(plaintext):
-            # CBC mode encrypt: encrypt(plaintext_block XOR previous)
-            block = self.encrypt_block(xor_bytes(plaintext_block, previous))
-            blocks.append(block)
-            previous = block
+        if fast:
+            from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+            key = self._raw_key
+            cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
+            encryptor = cipher.encryptor()
+            ct = encryptor.update(plaintext) + encryptor.finalize()
+            return ct
+        else:
+            blocks = []
+            previous = iv
+            for plaintext_block in split_blocks(plaintext):
+                # CBC mode encrypt: encrypt(plaintext_block XOR previous)
+                block = self.encrypt_block(xor_bytes(plaintext_block, previous))
+                blocks.append(block)
+                previous = block
+            return b''.join(blocks)
 
-        return b''.join(blocks)
-
-    def decrypt_cbc(self, ciphertext, iv, padded_data=True):
+    def decrypt_cbc(self, ciphertext, iv, padded_data=True, fast=False):
         """
         Decrypts `ciphertext` using CBC mode and PKCS#7 padding, with the given
         initialization vector (iv).
         """
         assert len(iv) == 16
 
-        blocks = []
-        previous = iv
-        for ciphertext_block in split_blocks(ciphertext):
-            # CBC mode decrypt: previous XOR decrypt(ciphertext)
-            blocks.append(xor_bytes(previous, self.decrypt_block(ciphertext_block)))
-            previous = ciphertext_block
+        decrypt = b''
+        if fast:
+            from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+            key = self._raw_key
+            cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
+            decryptor = cipher.decryptor()
+            decrypt = decryptor.update(ciphertext) + decryptor.finalize()
+        else:
+            blocks = []
+            previous = iv
+            for ciphertext_block in split_blocks(ciphertext):
+                # CBC mode decrypt: previous XOR decrypt(ciphertext)
+                blocks.append(xor_bytes(previous, self.decrypt_block(ciphertext_block)))
+                previous = ciphertext_block
+                decrypt = b''.join(blocks)
 
         if padded_data:
-            return unpad(b''.join(blocks))
-        return b''.join(blocks)
+            return unpad(decrypt)
+        return decrypt

@@ -9,6 +9,8 @@ python 3.x (only tested on latest)
 
 boto3 for s3 handling
 
+cryptography for speeding up AES (Not required but recommended & on by default)
+
 ### Credits 
 #### s3mu
 none (or none that I have remembered to document yet)

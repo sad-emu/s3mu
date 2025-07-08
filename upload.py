@@ -16,7 +16,8 @@ def multipart_upload(file_path, bucket, key, part_size, ek, kem):
     upload_id = mpu['UploadId']
     parts = []
     outstream = Estream(part_size*3)
-    ecrypt = EmuCrypt(CRYPT_STREAM_MODE_ENCRYPT, crypt_mode=CRYPT_MODE_TWO, ek=ek, kem=kem, output_stream=outstream)
+    ecrypt = EmuCrypt(CRYPT_STREAM_MODE_ENCRYPT, crypt_mode=CRYPT_MODE_TWO, ek=ek, kem=kem, output_stream=outstream,
+                      hardware=True)
     flushed = False
 
     try:
@@ -84,6 +85,10 @@ def main():
                                                                            "0 = none, "
                                                                            "1 = Sync with preshared key, "
                                                                            "2 = Async with kyber")
+    parser.add_argument("--python-only", type=bool, default=False, help="Python only doesn't require "
+                                                                        "the cryptography package but is significantly "
+                                                                        "slower. "
+                                                                        "Only set to true for very small (kb) files.")
     args = parser.parse_args()
     part_size = args.chunk_size * 1024 * 1024
 

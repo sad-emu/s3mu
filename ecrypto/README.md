@@ -13,9 +13,12 @@ Built using:
 ### Requirements
 Python 3.x (only tested on latest)
 
+### Reccomended
+Cryptograph package will vastly improve performance.
+
 ### Features
 
-1. Pure python. Only imports os, hashlib, unittest and base64
+1. Can run with pure python. Only imports os, hashlib, unittest and base64
 2. Data is streamed
 2. Cyphertext is hashed and verified on decryption
 3. MODE_ONE for AES with a pre-shared key 

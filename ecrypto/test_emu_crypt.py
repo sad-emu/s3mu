@@ -261,3 +261,25 @@ class TestStringMethods(unittest.TestCase):
         mem_out_stream.seek(0)
         plaintext = mem_out_stream.read()
         self.assertEqual(secret, plaintext)
+
+    def test_block_encrypt_block_decrypt_fast(self):
+        key = "bad_password"
+        secret = "this text is really secret 010101"
+
+        ciphertext = EmuCrypt.block_encrypt(key, secret)
+        self.assertNotEqual(secret.encode('utf-8'), ciphertext)
+
+        plaintext = EmuCrypt.block_decrypt(key, ciphertext, fast=True)
+        self.assertEqual(secret, plaintext.decode('utf-8'))
+
+
+    def test_block_encrypt_fast_block_decrypt(self):
+        key = "bad_password"
+        secret = "this text is really secret 010101"
+
+        ciphertext = EmuCrypt.block_encrypt(key, secret, fast=True)
+        self.assertNotEqual(secret.encode('utf-8'), ciphertext)
+
+        plaintext = EmuCrypt.block_decrypt(key, ciphertext)
+        self.assertEqual(secret, plaintext.decode('utf-8'))
+
