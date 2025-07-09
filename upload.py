@@ -6,7 +6,7 @@ from helpers.estream import Estream
 from ecrypto.asyn.ml_kem.pkcs import ek_from_pem
 from ecrypto.emu_crypt import EmuCrypt, CRYPT_MODE_TWO, CRYPT_STREAM_MODE_ENCRYPT
 
-def multipart_upload(file_path, bucket, key, part_size, ek, kem):
+def multipart_upload(file_path, bucket, key, part_size, ek, kem, hardware=True):
     if part_size < 4096:
         raise ValueError("Part size should be larger with how ecrypto has been implemented")
     s3 = boto3.client('s3')
@@ -17,7 +17,7 @@ def multipart_upload(file_path, bucket, key, part_size, ek, kem):
     parts = []
     outstream = Estream(part_size*3)
     ecrypt = EmuCrypt(CRYPT_STREAM_MODE_ENCRYPT, crypt_mode=CRYPT_MODE_TWO, ek=ek, kem=kem, output_stream=outstream,
-                      hardware=True)
+                      hardware=hardware)
     flushed = False
 
     try:
@@ -80,12 +80,12 @@ def main():
     parser.add_argument("bucket_name", help="Name of the S3 bucket")
     parser.add_argument("key", help="S3 object key (destination path)")
     parser.add_argument("encryption_pem", help="Local path to PEM file for encryption")
-    parser.add_argument("--chunk-size", type=int, default=8, help="Chunk size in MB (default: 8MB)")
+    parser.add_argument("--chunk_size", type=int, default=8, help="Chunk size in MB (default: 8MB)")
     parser.add_argument("--encrypt", type=int, default=2, help="Modes: "
                                                                            "0 = none, "
                                                                            "1 = Sync with preshared key, "
                                                                            "2 = Async with kyber")
-    parser.add_argument("--python-only", type=bool, default=False, help="Python only doesn't require "
+    parser.add_argument("--hardware", type=bool, default=True, help="Setting to False doesn't require "
                                                                         "the cryptography package but is significantly "
                                                                         "slower. "
                                                                         "Only set to true for very small (kb) files.")
@@ -102,7 +102,7 @@ def main():
         ek_string = file.read()
     kem, ek = ek_from_pem(ek_string)
     print("Starting timestamp:", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    multipart_upload(args.file_path, args.bucket_name, args.key, part_size, ek, kem)
+    multipart_upload(args.file_path, args.bucket_name, args.key, part_size, ek, kem, hardware=args.hardware)
     print("Ending timestamp:", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 if __name__ == "__main__":
