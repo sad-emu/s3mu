@@ -89,7 +89,7 @@ def main():
     parser.add_argument("--hardware", type=bool, default=True, help="Setting to False doesn't require "
                                                                         "the cryptography package but is significantly "
                                                                         "slower. "
-                                                                        "Only set to true for very small (kb) files.")
+                                                                        "Only set to false for very small (kb) files.")
     args = parser.parse_args()
     part_size = args.chunk_size * 1024 * 1024
 
