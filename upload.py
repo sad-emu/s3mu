@@ -11,6 +11,7 @@ def multipart_upload(file_path, bucket, key, part_size, ek, kem, hardware=True):
         raise ValueError("Part size should be larger with how ecrypto has been implemented")
     s3 = boto3.client('s3')
     file_size = os.path.getsize(file_path)
+    total_parts = file_size / part_size
     amount_read = 0
     mpu = s3.create_multipart_upload(Bucket=bucket, Key=key)
     upload_id = mpu['UploadId']
@@ -58,7 +59,7 @@ def multipart_upload(file_path, bucket, key, part_size, ek, kem, hardware=True):
                     'PartNumber': part_number,
                     'ETag': response['ETag']
                 })
-                print(f"Uploaded part {part_number}")
+                print(f"Uploaded part {part_number} of {total_parts}")
                 part_number += 1
 
         s3.complete_multipart_upload(
@@ -67,7 +68,7 @@ def multipart_upload(file_path, bucket, key, part_size, ek, kem, hardware=True):
             UploadId=upload_id,
             MultipartUpload={'Parts': parts}
         )
-        print("Upload complete")
+        print("Upload complete!")
 
     except Exception as e:
         print(f"Error: {e}")
