@@ -15,11 +15,12 @@ import ecrypto.tools as tools
 # Ciphertext
 # 32 bytes Ciphertext hash
 
-# if mode 1 (ASYNC)
+# if mode 2 (ASYNC)
 # IV
 # Salt
 # 2 bytes length of key
 # Encrypted key
+# Ciphertext
 # 32 bytes Ciphertext hash
 
 CRYPT_HEADER_LEN = 4
