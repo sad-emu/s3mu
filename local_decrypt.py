@@ -1,40 +1,7 @@
 import argparse
 import datetime
-import os.path
-
-from helpers.estream import Estream
 from ecrypto.asyn.ml_kem.pkcs import dk_from_pem
-from ecrypto.emu_crypt import EmuCrypt, CRYPT_MODE_TWO, CRYPT_STREAM_MODE_DECRYPT
-
-def chunk_decrypt(input_path, output_path, part_size, ek, kem, hardware=True):
-    if part_size < 4096:
-        raise ValueError("Part size should be larger with how ecrypto has been implemented")
-
-    total_size = os.path.getsize(input_path)
-    amount_read = 0
-
-    # Prepare decryption stream
-    outstream = Estream(part_size*3)
-    ecrypt = EmuCrypt(CRYPT_STREAM_MODE_DECRYPT, crypt_mode=CRYPT_MODE_TWO, ek=ek, kem=kem, output_stream=outstream,
-                      hardware=hardware)
-
-    with open(input_path, 'rb') as fi:
-        with open(output_path, 'wb+') as fo:
-            while amount_read < total_size:
-                chunk = fi.read(part_size)
-
-                ecrypt.write(chunk)
-
-                if len(outstream) > 0:
-                    fo.write(outstream.pop(len(outstream)))
-                amount_read += len(chunk)
-
-            # Flush final bytes
-            ecrypt.flush()
-            if len(outstream) > 0:
-                fo.write(outstream.pop(len(outstream)))
-
-    print("Local decryption complete")
+from helpers import local
 
 def main():
     parser = argparse.ArgumentParser(description="Decrypt a file on disk.")
@@ -56,7 +23,7 @@ def main():
     kem, dk, _, _ = dk_from_pem(dk_string)
 
     print("Starting timestamp:", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    chunk_decrypt(args.input_path, args.output_path, part_size, dk, kem, hardware=args.hardware)
+    local.chunk_decrypt(args.input_path, args.output_path, part_size, dk, kem, hardware=args.hardware)
     print("Ending timestamp:", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 if __name__ == "__main__":
