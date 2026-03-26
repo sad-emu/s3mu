@@ -1,79 +1,6 @@
-import boto3
-import os
 import argparse
 import datetime
-from helpers.estream import Estream
-from ecrypto.asyn.ml_kem.pkcs import ek_from_pem
-from ecrypto.emu_crypt import EmuCrypt, CRYPT_MODE_TWO, CRYPT_STREAM_MODE_ENCRYPT
-
-def multipart_upload(file_path, bucket, key, part_size, ek, kem, hardware=True):
-    if part_size < 4096:
-        raise ValueError("Part size should be larger with how ecrypto has been implemented")
-    s3 = boto3.client('s3')
-    file_size = os.path.getsize(file_path)
-    total_parts = file_size / part_size
-    amount_read = 0
-    mpu = s3.create_multipart_upload(Bucket=bucket, Key=key)
-    upload_id = mpu['UploadId']
-    parts = []
-    outstream = Estream(part_size*3)
-    ecrypt = EmuCrypt(CRYPT_STREAM_MODE_ENCRYPT, crypt_mode=CRYPT_MODE_TWO, ek=ek, kem=kem, output_stream=outstream,
-                      hardware=hardware)
-    flushed = False
-
-    try:
-        with open(file_path, 'rb') as f:
-            part_number = 1
-            last = False
-            while amount_read < file_size or last:
-                data = f.read(part_size)
-
-                if len(data) < part_size or amount_read == file_size:
-                    last = True # We might need to run twice to flush
-
-                amount_read += len(data)
-
-                if len(data) != 0:
-                    ecrypt.write(data)
-
-                if last and not flushed:
-                    ecrypt.flush() # We are done
-                    flushed = True
-
-                if len(outstream) < part_size and not last:
-                    continue # go again till we have enough data
-
-                push_data = outstream.pop(part_size)
-
-                if len(push_data) == 0:
-                    break
-
-                response = s3.upload_part(
-                    Bucket=bucket,
-                    Key=key,
-                    PartNumber=part_number,
-                    UploadId=upload_id,
-                    Body=push_data
-                )
-                parts.append({
-                    'PartNumber': part_number,
-                    'ETag': response['ETag']
-                })
-                print(f"Uploaded part {part_number} of {total_parts}")
-                part_number += 1
-
-        s3.complete_multipart_upload(
-            Bucket=bucket,
-            Key=key,
-            UploadId=upload_id,
-            MultipartUpload={'Parts': parts}
-        )
-        print("Upload complete!")
-
-    except Exception as e:
-        print(f"Error: {e}")
-        s3.abort_multipart_upload(Bucket=bucket, Key=key, UploadId=upload_id)
-        print("Upload aborted")
+from helpers import upload, async_keys
 
 def main():
     parser = argparse.ArgumentParser(description="Upload a file to S3 using multipart upload.")
@@ -101,9 +28,9 @@ def main():
     ek_string = ""
     with open(args.encryption_pem, 'r') as file:
         ek_string = file.read()
-    kem, ek = ek_from_pem(ek_string)
+    kem, ek = async_keys.get_encryption_key_from_pem(ek_string)
     print("Starting timestamp:", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    multipart_upload(args.file_path, args.bucket_name, args.key, part_size, ek, kem, hardware=args.hardware)
+    upload.multipart_upload(args.file_path, args.bucket_name, args.key, part_size, ek, kem, hardware=args.hardware)
     print("Ending timestamp:", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 if __name__ == "__main__":
