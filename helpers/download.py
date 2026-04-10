@@ -40,14 +40,10 @@ def multipart_download(bucket, key, output_path, part_size, ek, kem, hardware=Tr
 
     print("Download and decryption complete")
 
-def raw_multipart_download(bucket, key, output_path, part_size):
+def raw_multipart_download(bucket, key, output_path, part_size, total_size, s3):
     if part_size < 4096:
         raise ValueError("Part size should be larger with how ecrypto has been implemented")
-    s3 = boto3.client('s3')
 
-    # Get object metadata (e.g., content length)
-    head = s3.head_object(Bucket=bucket, Key=key)
-    total_size = head['ContentLength']
     amount_read = 0
 
     with open(output_path, 'wb') as f:
